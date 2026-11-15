@@ -1,4 +1,45 @@
 import Image from "next/image";
+import { getTransactions, type Transaction } from "@/data/transactions";
+const { rows, total, page, pageCount } = getTransactions({ page: 1, pageSize: 25 });
+
+const SearchBar = () => {
+  return (
+      <form>
+        <input type="text" placeholder="Search..." />
+        <label>
+          <input type="checkbox" />
+          {' '}
+          Only show products in stock
+        </label>
+      </form>
+  );
+}
+
+const ProductCategoryRow = () => null;
+
+const ProductRow = () => null;
+
+const ProductTable = () => {
+  const rows = getTransactions({ page: 1, pageSize: 25 });
+  return(
+      <table>
+    <thead>
+    <tr>
+      <th>Name</th>
+      <th>Price</th>
+    </tr>
+    </thead>
+    <tbody>{rows}</tbody>
+  </table>
+  );
+};
+
+const FilterableProductTable = () => {
+  return (<div>
+    <SearchBar/>
+    <ProductTable/>
+  </div>)
+}
 
 export default function Home() {
   return (

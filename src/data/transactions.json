@@ -1,5 +1,4 @@
-{
-  [
+[
     {
       "id": "txn_000001",
       "date": "2026-02-03",
@@ -29705,13 +29704,3 @@
       "threeDsStatus": "rejected"
     }
   ]
-
-  "compilerOptions": {
-    "target": "es2016",
-    "module": "commonjs",
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "strict": true,
-    "skipLibCheck": true
-  }
-}
