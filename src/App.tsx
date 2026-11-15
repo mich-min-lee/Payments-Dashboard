@@ -1,3 +1,4 @@
+import { KpiCards } from "@/components/kpi-cards"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 
 export default function App() {
@@ -13,6 +14,11 @@ export default function App() {
           `${data.transactions.length.toLocaleString()} transactions loaded` +
             (data.skipped > 0 ? ` (${data.skipped} skipped)` : "")}
       </p>
+      {data.status === "success" && (
+        <section className="mt-6">
+          <KpiCards transactions={data.transactions} />
+        </section>
+      )}
     </main>
   )
 }
