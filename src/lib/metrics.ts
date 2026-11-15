@@ -138,3 +138,33 @@ export function healthOf(rate: number | null, threshold: HealthThreshold): Healt
   if (rate <= threshold.critical) return "warning"
   return "critical"
 }
+
+export interface MerchantMetrics {
+  merchant: string
+  threeDsRate: Ratio
+  threeDsOutcomes: Record<ThreeDsStatus, Ratio>
+  challengeOutcomes: Record<ChallengeStatus, Ratio>
+}
+
+/** All metrics per merchant, sorted by name. `merchantOf` decides each transaction's merchant. */
+export function merchantMetrics(
+  transactions: readonly Transaction[],
+  merchantOf: (transaction: Transaction) => string,
+): MerchantMetrics[] {
+  const byMerchant = new Map<string, Transaction[]>()
+  for (const t of transactions) {
+    const merchant = merchantOf(t)
+    const group = byMerchant.get(merchant)
+    if (group) group.push(t)
+    else byMerchant.set(merchant, [t])
+  }
+  return [...byMerchant.keys()].sort().map((merchant) => {
+    const group = byMerchant.get(merchant) ?? []
+    return {
+      merchant,
+      threeDsRate: threeDsRate(group),
+      threeDsOutcomes: threeDsOutcomes(group),
+      challengeOutcomes: challengeOutcomes(group),
+    }
+  })
+}

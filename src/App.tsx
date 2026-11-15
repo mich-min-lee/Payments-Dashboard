@@ -1,4 +1,5 @@
 import { KpiCards } from "@/components/kpi-cards"
+import { MerchantTable } from "@/components/merchant-table"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 
 export default function App() {
@@ -17,6 +18,11 @@ export default function App() {
       {data.status === "success" && (
         <section className="mt-6">
           <KpiCards transactions={data.transactions} />
+        </section>
+      )}
+      {data.status === "success" && (
+        <section className="mt-10">
+          <MerchantTable transactions={data.transactions} />
         </section>
       )}
     </main>

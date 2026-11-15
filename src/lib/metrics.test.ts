@@ -6,6 +6,7 @@ import {
   dailyMetrics,
   HEALTH_THRESHOLDS,
   healthOf,
+  merchantMetrics,
   ratio,
   threeDsOutcomes,
   threeDsRate,
@@ -132,5 +133,19 @@ describe("healthOf", () => {
 
   it("has no health when there's no rate", () => {
     expect(healthOf(null, challengeSuccess)).toBeNull()
+  })
+})
+
+describe("merchantMetrics", () => {
+  it("groups by merchant and computes each merchant's own rates", () => {
+    const a = tx({ threeDsStatus: "frictionless" })
+    const b = tx({})
+    const c = tx({ threeDsStatus: "rejected" })
+    const merchantOf = (t: Transaction) => (t.id === c.id ? "Beta" : "Alpha")
+
+    const rows = merchantMetrics([a, b, c], merchantOf)
+    expect(rows.map((r) => r.merchant)).toEqual(["Alpha", "Beta"])
+    expect(rows[0].threeDsRate).toEqual({ count: 1, total: 2, rate: 0.5 })
+    expect(rows[1].threeDsOutcomes.rejected.rate).toBe(1)
   })
 })
