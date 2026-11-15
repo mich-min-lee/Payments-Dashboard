@@ -21,10 +21,8 @@ https://gist.githubusercontent.com/bmeeder22/ba2921a5791125fe33218da7e241628e/ra
 
 30 days of transactions. A record with no threeDsStatus did not go through 3DS.
 
-Current repo state: `src/data/transactions.json` and `src/data/transactions.ts`
-(server-only, with paging via `getTransactions`) predate this spec. They are to be
-replaced by the `useDashboardData` hook fetching the gist on the client. Don't build
-new features on `getTransactions`.
+All data comes from the gist via the `useDashboardData` hook. There is no local copy
+of the dataset in the app.
 
 ## Metrics and what each divides by
 - 3DS rate: transactions with a threeDsStatus, out of all transactions.
@@ -32,14 +30,14 @@ new features on `getTransactions`.
 - Challenge outcomes: success, failed, abandoned, out of challenged transactions.
 
 ## Stack
-Next.js 16 (App Router), React 19, strict TypeScript, Tailwind v4, shadcn/ui
+Vite 8, React 19, strict TypeScript, Tailwind v4 (`@tailwindcss/vite`), shadcn/ui
 (Radix base, `radix-maia` style), Recharts through shadcn Chart, TanStack Table v9,
-Vitest.
+Vitest, oxlint.
 
-- The dashboard is client-rendered: there's no backend, so dashboard components are
-  client components (`"use client"`) and data is fetched in the browser.
-- The real case uses Vite. A switch to Vite is possible; if it happens, update this
-  section. Keep code framework-agnostic where it's free (hooks, metrics, components).
+- Single-page app: `index.html` → `src/main.tsx` → `src/App.tsx`. Global styles and
+  theme tokens are in `src/index.css`. `@/` is an alias for `src/`.
+- Scripts: `pnpm dev` (port 3001), `pnpm build` (type-check + build), `pnpm lint`.
+- No Next.js: no `"use client"`, server components, or `next/*` imports.
 - TanStack Table is v9 (`useTable`, `tableFeatures`), not v8 (`useReactTable`). Load
   the bundled skills via Intent (see AGENTS.md) before writing table code.
 
