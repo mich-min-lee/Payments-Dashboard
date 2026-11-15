@@ -4,6 +4,8 @@ import {
   biggestChallengeShift,
   challengeOutcomes,
   dailyMetrics,
+  HEALTH_THRESHOLDS,
+  healthOf,
   ratio,
   threeDsOutcomes,
   threeDsRate,
@@ -108,5 +110,27 @@ describe("biggestChallengeShift", () => {
       tx({ date: "2026-02-04", threeDsStatus: "frictionless" }),
     ])
     expect(biggestChallengeShift(days)).toBeNull()
+  })
+})
+
+describe("healthOf", () => {
+  const { challengeSuccess, rejection } = HEALTH_THRESHOLDS
+
+  it("higher is better: ≥70% healthy, 60–70% warning, <60% critical", () => {
+    expect(healthOf(0.7, challengeSuccess)).toBe("healthy")
+    expect(healthOf(0.65, challengeSuccess)).toBe("warning")
+    expect(healthOf(0.6, challengeSuccess)).toBe("warning")
+    expect(healthOf(0.59, challengeSuccess)).toBe("critical")
+  })
+
+  it("lower is better: ≤10% healthy, 10–15% warning, >15% critical", () => {
+    expect(healthOf(0.1, rejection)).toBe("healthy")
+    expect(healthOf(0.12, rejection)).toBe("warning")
+    expect(healthOf(0.15, rejection)).toBe("warning")
+    expect(healthOf(0.16, rejection)).toBe("critical")
+  })
+
+  it("has no health when there's no rate", () => {
+    expect(healthOf(null, challengeSuccess)).toBeNull()
   })
 })

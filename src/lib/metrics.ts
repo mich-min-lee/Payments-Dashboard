@@ -108,3 +108,33 @@ function mapStatuses<S extends string, V>(
 ): Record<S, V> {
   return Object.fromEntries(statuses.map((s) => [s, fn(s)])) as Record<S, V>
 }
+
+export type Health = "healthy" | "warning" | "critical"
+
+export interface HealthThreshold {
+  direction: "higher-is-better" | "lower-is-better"
+  /** Healthy at or past this rate. */
+  healthy: number
+  /** Critical past this rate. Between the two is warning. */
+  critical: number
+}
+
+export const HEALTH_THRESHOLDS = {
+  challengeSuccess: { direction: "higher-is-better", healthy: 0.7, critical: 0.6 },
+  frictionless: { direction: "higher-is-better", healthy: 0.6, critical: 0.5 },
+  rejection: { direction: "lower-is-better", healthy: 0.1, critical: 0.15 },
+  abandonment: { direction: "lower-is-better", healthy: 0.15, critical: 0.2 },
+} as const satisfies Record<string, HealthThreshold>
+
+/** Healthy, warning, or critical for a rate. Null when there's no rate to judge. */
+export function healthOf(rate: number | null, threshold: HealthThreshold): Health | null {
+  if (rate === null) return null
+  if (threshold.direction === "higher-is-better") {
+    if (rate >= threshold.healthy) return "healthy"
+    if (rate >= threshold.critical) return "warning"
+    return "critical"
+  }
+  if (rate <= threshold.healthy) return "healthy"
+  if (rate <= threshold.critical) return "warning"
+  return "critical"
+}
