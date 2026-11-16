@@ -124,6 +124,8 @@ export const HEALTH_THRESHOLDS = {
   frictionless: { direction: "higher-is-better", healthy: 0.6, critical: 0.5 },
   rejection: { direction: "lower-is-better", healthy: 0.1, critical: 0.15 },
   abandonment: { direction: "lower-is-better", healthy: 0.15, critical: 0.2 },
+  challenge: { direction: "lower-is-better", healthy: 0.3, critical: 0.4 },
+  failed: { direction: "lower-is-better", healthy: 0.2, critical: 0.25 },
 } as const satisfies Record<string, HealthThreshold>
 
 /** Healthy, warning, or critical for a rate. Null when there's no rate to judge. */
@@ -144,6 +146,8 @@ export interface MerchantMetrics {
   threeDsRate: Ratio
   threeDsOutcomes: Record<ThreeDsStatus, Ratio>
   challengeOutcomes: Record<ChallengeStatus, Ratio>
+  daily: DailyMetrics[]
+  biggestChallengeShift: ChallengeShift | null
 }
 
 /** All metrics per merchant, sorted by name. `merchantOf` decides each transaction's merchant. */
@@ -160,11 +164,62 @@ export function merchantMetrics(
   }
   return [...byMerchant.keys()].sort().map((merchant) => {
     const group = byMerchant.get(merchant) ?? []
+    const daily = dailyMetrics(group)
     return {
       merchant,
       threeDsRate: threeDsRate(group),
       threeDsOutcomes: threeDsOutcomes(group),
       challengeOutcomes: challengeOutcomes(group),
+      daily,
+      biggestChallengeShift: biggestChallengeShift(daily),
     }
   })
+}
+
+/** One number in the funnel: the ratio plus its health (null = no badge). */
+export interface FunnelStat {
+  ratio: Ratio
+  health: Health | null
+}
+
+/**
+ * The three funnel levels. Each level divides by the one above it:
+ * all → 3DS → challenged.
+ */
+export interface FunnelMetrics {
+  threeDs: FunnelStat
+  frictionless: FunnelStat
+  challenge: FunnelStat
+  rejected: FunnelStat
+  success: FunnelStat
+  failed: FunnelStat
+  abandoned: FunnelStat
+}
+
+export function funnelMetrics(transactions: readonly Transaction[]): FunnelMetrics {
+  const outcomes = threeDsOutcomes(transactions)
+  const challenges = challengeOutcomes(transactions)
+  const stat = (ratio: Ratio, threshold: HealthThreshold | null): FunnelStat => ({
+    ratio,
+    health: threshold ? healthOf(ratio.rate, threshold) : null,
+  })
+
+  return {
+    // No threshold: more 3DS isn't clearly better or worse.
+    threeDs: stat(threeDsRate(transactions), null),
+    frictionless: stat(outcomes.frictionless, HEALTH_THRESHOLDS.frictionless),
+    challenge: stat(outcomes.challenge, HEALTH_THRESHOLDS.challenge),
+    rejected: stat(outcomes.rejected, HEALTH_THRESHOLDS.rejection),
+    success: stat(challenges.success, HEALTH_THRESHOLDS.challengeSuccess),
+    failed: stat(challenges.failed, HEALTH_THRESHOLDS.failed),
+    abandoned: stat(challenges.abandoned, HEALTH_THRESHOLDS.abandonment),
+  }
+}
+
+/** How loudly a card should speak: size and weight only, never color. */
+export type Emphasis = "strong" | "default" | "quiet"
+
+/** Rejected stays quiet until it needs attention. */
+export function rejectedEmphasis(health: Health | null): Emphasis {
+  return health === "warning" || health === "critical" ? "default" : "quiet"
 }

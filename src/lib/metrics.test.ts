@@ -4,10 +4,12 @@ import {
   biggestChallengeShift,
   challengeOutcomes,
   dailyMetrics,
+  funnelMetrics,
   HEALTH_THRESHOLDS,
   healthOf,
   merchantMetrics,
   ratio,
+  rejectedEmphasis,
   threeDsOutcomes,
   threeDsRate,
 } from "./metrics"
@@ -147,5 +149,43 @@ describe("merchantMetrics", () => {
     expect(rows.map((r) => r.merchant)).toEqual(["Alpha", "Beta"])
     expect(rows[0].threeDsRate).toEqual({ count: 1, total: 2, rate: 0.5 })
     expect(rows[1].threeDsOutcomes.rejected.rate).toBe(1)
+    expect(rows[0].daily).toHaveLength(1)
+  })
+})
+
+describe("funnelMetrics", () => {
+  const funnel = funnelMetrics([
+    tx({}),
+    tx({ threeDsStatus: "frictionless" }),
+    tx({ threeDsStatus: "rejected" }),
+    tx({ threeDsStatus: "challenge", challengeStatus: "success" }),
+    tx({ threeDsStatus: "challenge", challengeStatus: "abandoned" }),
+  ])
+
+  it("divides each level by the level above it", () => {
+    expect(funnel.threeDs.ratio).toEqual({ count: 4, total: 5, rate: 0.8 })
+    expect(funnel.challenge.ratio).toEqual({ count: 2, total: 4, rate: 0.5 })
+    expect(funnel.abandoned.ratio).toEqual({ count: 1, total: 2, rate: 0.5 })
+  })
+
+  it("level 2 adds up to 100%, and so does level 3", () => {
+    const sum = (...xs: (number | null)[]) => xs.reduce<number>((a, b) => a + (b ?? 0), 0)
+    expect(sum(funnel.frictionless.ratio.rate, funnel.challenge.ratio.rate, funnel.rejected.ratio.rate)).toBeCloseTo(1)
+    expect(sum(funnel.success.ratio.rate, funnel.failed.ratio.rate, funnel.abandoned.ratio.rate)).toBeCloseTo(1)
+  })
+
+  it("gives 3DS rate no health, and judges the rest", () => {
+    expect(funnel.threeDs.health).toBeNull()
+    expect(funnel.challenge.health).toBe("critical") // 50% > 40%
+    expect(funnel.abandoned.health).toBe("critical") // 50% > 20%
+  })
+})
+
+describe("rejectedEmphasis", () => {
+  it("is quiet when healthy and speaks up otherwise", () => {
+    expect(rejectedEmphasis("healthy")).toBe("quiet")
+    expect(rejectedEmphasis(null)).toBe("quiet")
+    expect(rejectedEmphasis("warning")).toBe("default")
+    expect(rejectedEmphasis("critical")).toBe("default")
   })
 })
