@@ -18,3 +18,20 @@ export function HealthBadge({ health }: { health: Health }) {
     </Badge>
   )
 }
+
+const ICON_COLOR = { healthy: "text-healthy", warning: "text-warning", critical: "text-critical" } as const
+
+// Icon-only shapes: critical is an exclamation, not an X (an X reads as "cancelled").
+const ICONS = { healthy: CircleCheck, warning: CircleAlert, critical: CircleAlert } as const
+
+/** Icon-only status for tight spaces. The word is read by screen readers and shown on hover. */
+export function HealthIcon({ health, className }: { health: Health; className?: string }) {
+  const { label } = HEALTH_STYLES[health]
+  const Icon = ICONS[health]
+  return (
+    <span title={label} className={cn("inline-flex", ICON_COLOR[health], className)}>
+      <Icon aria-hidden className="size-4" />
+      <span className="sr-only">{label}</span>
+    </span>
+  )
+}

@@ -69,6 +69,9 @@ deterministically and label them as mock wherever they appear.
   change.
 - Time period toggle: Today, This week, This month (the last 1, 7, or 30 days of data).
 - No "vs yesterday / last week" change lines in the summary (removed on request).
+- Summary status (deliberate exception to "pair color with a text label"): critical
+  numbers are red with an exclamation icon; warning numbers are amber with no icon;
+  healthy numbers are plain. Screen readers still hear "Critical" / "Warning".
 
 ## Code rules
 - Metric calculations are pure functions in one file, with Vitest tests. No

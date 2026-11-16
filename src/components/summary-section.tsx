@@ -1,4 +1,5 @@
-import { HealthBadge } from "@/components/health-badge"
+import { useState } from "react"
+import { HealthIcon } from "@/components/health-badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatPercent } from "@/lib/format"
 import type { PeriodStat, PeriodSummary } from "@/lib/metrics"
@@ -10,7 +11,9 @@ export type SummaryState =
   | { status: "ready"; summary: PeriodSummary }
 
 // Normal segments are shades of gray; color appears only when health is off.
-const NEUTRAL_SEGMENTS = ["bg-foreground/15", "bg-foreground/45", "bg-foreground/85"] as const
+// Light gray: 3.1:1 on white. Mid gray: 3.3:1 from light gray. The near-black third
+// piece (only when the last segment is healthy) is separated by the 2px gaps.
+const NEUTRAL_SEGMENTS = ["bg-foreground/45", "bg-foreground/[0.78]", "bg-foreground"] as const
 const OFF_SEGMENT = { warning: "bg-warning", critical: "bg-critical" } as const
 const OFF_TEXT = { warning: "text-warning", critical: "text-critical" } as const
 
@@ -56,22 +59,22 @@ function Summary({ summary }: { summary: PeriodSummary }) {
         <p className="text-4xl leading-none font-semibold tracking-tight tabular-nums">
           {formatPercent(stats.threeDs.ratio.rate)}
         </p>
-        <div className="flex w-fit flex-col gap-1 text-[13px] text-muted-foreground tabular-nums">
+        <div className="flex w-fit flex-col gap-1 text-[15px] font-medium tabular-nums">
           <span>
-            <b className="font-semibold text-foreground">{stats.threeDs.ratio.count.toLocaleString()}</b>{" "}
-            3DS transactions
+            <b className="font-bold">{stats.threeDs.ratio.count.toLocaleString()}</b>{" "}
+            3DS trnx
           </span>
           <span aria-hidden className="border-t border-foreground/40" />
           <span>
-            <b className="font-semibold text-foreground">{stats.threeDs.ratio.total.toLocaleString()}</b>{" "}
-            Total transactions
+            <b className="font-bold">{stats.threeDs.ratio.total.toLocaleString()}</b>{" "}
+            Total trnx
           </span>
         </div>
       </div>
 
       <OutcomeGroup
         title="3DS outcomes"
-        basis={`Share of ${stats.threeDs.ratio.count.toLocaleString()} 3DS transactions`}
+        basis={`Out of ${stats.threeDs.ratio.count.toLocaleString()} 3DS trnx`}
         totalUnit="3DS trnx"
         segments={[
           { label: "Frictionless", description: "Approved with no extra step", stat: stats.frictionless },
@@ -82,7 +85,7 @@ function Summary({ summary }: { summary: PeriodSummary }) {
 
       <OutcomeGroup
         title="Challenge outcomes"
-        basis={`Share of ${stats.challenge.ratio.count.toLocaleString()} challenges`}
+        basis={`Out of ${stats.challenge.ratio.count.toLocaleString()} challenged trnx`}
         totalUnit="challenged trnx"
         segments={[
           { label: "Success", description: "Customer verified", stat: stats.success },
@@ -110,6 +113,14 @@ function OutcomeGroup({
     isOff(segment) ? OFF_SEGMENT[segment.stat.health] : NEUTRAL_SEGMENTS[index]
   const offText = (segment: Segment) => (isOff(segment) ? OFF_TEXT[segment.stat.health] : undefined)
 
+  // Which segment is hovered (bar piece or legend item). The others fade back.
+  const [active, setActive] = useState<number | null>(null)
+  const dimmed = (i: number) => active !== null && active !== i
+  const hoverProps = (i: number) => ({
+    onMouseEnter: () => setActive(i),
+    onMouseLeave: () => setActive(null),
+  })
+
   return (
     <div className="flex min-w-0 flex-[2_1_360px] flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -126,7 +137,12 @@ function OutcomeGroup({
         {segments.map((segment, i) => (
           <div
             key={segment.label}
-            className={cn("rounded-[3px]", colorOf(segment, i))}
+            {...hoverProps(i)}
+            className={cn(
+              "rounded-[3px] transition-opacity duration-300 ease-in-out",
+              colorOf(segment, i),
+              dimmed(i) && "opacity-30",
+            )}
             style={{ width: `${(segment.stat.ratio.rate ?? 0) * 100}%` }}
           />
         ))}
@@ -134,26 +150,32 @@ function OutcomeGroup({
 
       <ul role="list" className="grid grid-cols-3 gap-3.5">
         {segments.map((segment, i) => (
-          <li key={segment.label} className="flex min-w-0 flex-col gap-0.5">
+          <li
+            key={segment.label}
+            {...hoverProps(i)}
+            className={cn("flex min-w-0 flex-col gap-0.5 transition-opacity duration-300 ease-in-out", dimmed(i) && "opacity-40")}
+          >
             <div className="flex flex-wrap items-center gap-1.5">
               <span aria-hidden className={cn("size-2.5 flex-none rounded-[2px]", colorOf(segment, i))} />
               <span className="text-[13px] font-medium">{segment.label}</span>
             </div>
             {/* Always 2 lines tall, so the percentages line up across the row. */}
             <span className="line-clamp-2 min-h-[2lh] text-xs text-muted-foreground">{segment.description}</span>
-            <span className={cn("mt-1 text-[22px] font-semibold tabular-nums", offText(segment))}>
-              {formatPercent(segment.stat.ratio.rate)}
+            {/* Status icon sits right beside its number. */}
+            <div className="mt-1 flex items-center gap-1.5">
+              <span className={cn("text-[22px] font-semibold tabular-nums", offText(segment))}>
+                {formatPercent(segment.stat.ratio.rate)}
+              </span>
+              {/* Critical gets an alert icon; warning is shown by the amber number alone
+                  (design decision). Screen readers hear the word either way. */}
+              {segment.stat.health === "critical" && <HealthIcon health="critical" />}
+              {segment.stat.health === "warning" && <span className="sr-only">Warning</span>}
+            </div>
+            {/* Numerator and denominator on their own lines, so it always reads as a fraction. */}
+            <span className="flex flex-col text-xs font-medium text-muted-foreground tabular-nums">
+              <span>{segment.stat.ratio.count.toLocaleString()} trnx /</span>
+              <span>{segment.stat.ratio.total.toLocaleString()} {totalUnit}</span>
             </span>
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {segment.stat.ratio.count.toLocaleString()} trnx /{" "}
-              {segment.stat.ratio.total.toLocaleString()} {totalUnit}
-            </span>
-            {/* Loud only when off. The badge is the text label that goes with the colored number. */}
-            {isOff(segment) && (
-              <div className="mt-1">
-                <HealthBadge health={segment.stat.health} />
-              </div>
-            )}
           </li>
         ))}
       </ul>
