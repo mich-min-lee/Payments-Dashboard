@@ -1,4 +1,5 @@
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
+import { ChevronDown } from "lucide-react"
 import { HealthIcon } from "@/components/health-badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatPercent } from "@/lib/format"
@@ -17,17 +18,23 @@ const NEUTRAL_SEGMENTS = ["bg-foreground/45", "bg-foreground/[0.78]", "bg-foregr
 const OFF_SEGMENT = { warning: "bg-warning", critical: "bg-critical" } as const
 const OFF_TEXT = { warning: "text-warning", critical: "text-critical" } as const
 
-type OffSegment = Segment & { stat: { health: "warning" | "critical" } }
+const CHALLENGE_OUTCOMES_ID = "challenge-outcomes"
 
-/** Warning or critical: the only states that get color. */
-function isOff(segment: Segment): segment is OffSegment {
-  return segment.stat.health === "warning" || segment.stat.health === "critical"
-}
+// Lines a nested block up with the 2nd of 3 grid columns (gap-3.5 = 0.875rem):
+// one column width plus one gap.
+const UNDER_SECOND_COLUMN = "md:ml-[calc((100%-1.75rem)/3+0.875rem)]"
 
 interface Segment {
   label: string
   description: string
   stat: PeriodStat
+}
+
+type OffSegment = Segment & { stat: { health: "warning" | "critical" } }
+
+/** Warning or critical: the only states that get color. */
+function isOff(segment: Segment): segment is OffSegment {
+  return segment.stat.health === "warning" || segment.stat.health === "critical"
 }
 
 export function SummarySection({ state }: { state: SummaryState }) {
@@ -44,7 +51,8 @@ export function SummarySection({ state }: { state: SummaryState }) {
           <p className="mt-1 text-muted-foreground">{state.message}</p>
         </div>
       )}
-      {state.status === "ready" && <Summary summary={state.summary} />}
+      {/* Keyed by period, so the challenge section re-decides open/closed when the period changes. */}
+      {state.status === "ready" && <Summary key={state.summary.period} summary={state.summary} />}
     </section>
   )
 }
@@ -52,59 +60,108 @@ export function SummarySection({ state }: { state: SummaryState }) {
 function Summary({ summary }: { summary: PeriodSummary }) {
   const { stats } = summary
 
+  const challengeSegments: Segment[] = [
+    { label: "Success", description: "Customer verified", stat: stats.success },
+    { label: "Failed", description: "Customer couldn't verify", stat: stats.failed },
+    { label: "Abandoned", description: "Customer quit midway", stat: stats.abandoned },
+  ]
+  const offSegments = challengeSegments.filter(isOff)
+  const offCount = offSegments.length
+  // The most serious status among them decides the color of the "Needs Attention" text.
+  const worst = offSegments.some((s) => s.stat.health === "critical") ? "critical" : "warning"
+
+  // Open by default only when something needs attention (Abandoned is ops' #1 metric).
+  const [challengeOpen, setChallengeOpen] = useState(offCount > 0)
+
+  // The only control for the section: its own header. Closed, it also carries the status.
+  const challengeToggle = (
+    <h2>
+      <button
+        type="button"
+        onClick={() => setChallengeOpen((open) => !open)}
+        aria-expanded={challengeOpen}
+        aria-controls={challengeOpen ? CHALLENGE_OUTCOMES_ID : undefined}
+        className="-mx-2 -my-1 flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-muted"
+      >
+        <span className="font-semibold">Challenge outcomes</span>
+        {!challengeOpen &&
+          (offCount === 0 ? (
+            <span className="text-muted-foreground">· All healthy</span>
+          ) : (
+            <span className={cn("flex items-center gap-1 font-medium", OFF_TEXT[worst])}>
+              · Needs Attention
+              {worst === "critical" && <HealthIcon health="critical" />}
+            </span>
+          ))}
+        <ChevronDown
+          aria-hidden
+          className={cn("size-4 text-muted-foreground transition-transform duration-300", !challengeOpen && "-rotate-90")}
+        />
+      </button>
+    </h2>
+  )
+
   return (
     <>
-      <div className="flex min-w-0 flex-[1_1_220px] flex-col gap-2.5">
+      <div className="flex min-w-0 flex-[1_1_200px] flex-col gap-2.5">
         <h2 className="text-sm font-semibold">3DS rate</h2>
         <p className="text-4xl leading-none font-semibold tracking-tight tabular-nums">
           {formatPercent(stats.threeDs.ratio.rate)}
         </p>
-        <div className="flex w-fit flex-col gap-1 text-[15px] font-medium tabular-nums">
-          <span>
-            <b className="font-bold">{stats.threeDs.ratio.count.toLocaleString()}</b>{" "}
-            3DS trnx
-          </span>
-          <span aria-hidden className="border-t border-foreground/40" />
-          <span>
-            <b className="font-bold">{stats.threeDs.ratio.total.toLocaleString()}</b>{" "}
-            Total trnx
-          </span>
-        </div>
+        {/* The 3DS rate has no "Out of" header, so it spells out both counts. */}
+        <p className="text-[15px] text-muted-foreground tabular-nums">
+          <span className="font-semibold text-foreground/75">{stats.threeDs.ratio.count.toLocaleString()} 3DS trnx</span>{" "}
+          out of {stats.threeDs.ratio.total.toLocaleString()} total trnx
+        </p>
       </div>
 
-      <OutcomeGroup
-        title="3DS outcomes"
-        basis={`Out of ${stats.threeDs.ratio.count.toLocaleString()} 3DS trnx`}
-        totalUnit="3DS trnx"
-        segments={[
-          { label: "Frictionless", description: "Approved with no extra step", stat: stats.frictionless },
-          { label: "Challenge", description: "Bank asked customer to verify", stat: stats.challenge },
-          { label: "Rejection", description: "Declined by the bank", stat: stats.rejected },
-        ]}
-      />
+      <div className="flex min-w-0 flex-[3_1_440px] flex-col gap-5">
+        <OutcomeGroup
+          title="3DS outcomes"
+          baseCount={stats.threeDs.ratio.count}
+          totalUnit="3DS trnx"
+          segments={[
+            { label: "Frictionless", description: "Approved with no extra step", stat: stats.frictionless },
+            { label: "Challenge", description: "Bank asked customer to verify", stat: stats.challenge },
+            { label: "Rejection", description: "Declined by the bank", stat: stats.rejected },
+          ]}
+        />
 
-      <OutcomeGroup
-        title="Challenge outcomes"
-        basis={`Out of ${stats.challenge.ratio.count.toLocaleString()} challenged trnx`}
-        totalUnit="challenged trnx"
-        segments={[
-          { label: "Success", description: "Customer verified", stat: stats.success },
-          { label: "Failed", description: "Customer couldn't verify", stat: stats.failed },
-          { label: "Abandoned", description: "Customer quit midway", stat: stats.abandoned },
-        ]}
-      />
+        {/* Nested under the Challenge column: these outcomes are a breakdown of Challenge. */}
+        <div className={cn("border-l-2 pl-4", UNDER_SECOND_COLUMN)}>
+          {challengeOpen ? (
+            <OutcomeGroup
+              id={CHALLENGE_OUTCOMES_ID}
+              title="Challenge outcomes"
+              heading={challengeToggle}
+              baseCount={stats.challenge.ratio.count}
+              totalUnit="challenged trnx"
+              segments={challengeSegments}
+            />
+          ) : (
+            challengeToggle
+          )}
+        </div>
+      </div>
     </>
   )
 }
 
 function OutcomeGroup({
+  id,
   title,
-  basis,
+  heading,
+  baseCount,
   totalUnit,
   segments,
 }: {
+  id?: string
+  /** Used for the bar's screen-reader label, and as the heading unless `heading` is given. */
   title: string
-  basis: string
+  /** Replaces the plain heading, e.g. with a toggle button. */
+  heading?: ReactNode
+  /** How many transactions every segment divides by. */
+  baseCount: number
   /** What every segment divides by, e.g. "3DS trnx". */
   totalUnit: string
   segments: Segment[]
@@ -122,10 +179,15 @@ function OutcomeGroup({
   })
 
   return (
-    <div className="flex min-w-0 flex-[2_1_360px] flex-col gap-3">
+    <div id={id} className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        <span className="text-xs text-muted-foreground">{basis}</span>
+        {heading ?? <h2 className="text-sm font-semibold">{title}</h2>}
+        <span className="text-xs text-foreground/75">
+          Out of{" "}
+          <b className="font-semibold">
+            {baseCount.toLocaleString()} {totalUnit}
+          </b>
+        </span>
       </div>
 
       {/* The bar repeats the legend's numbers, so screen readers get one summary line. */}
@@ -153,7 +215,10 @@ function OutcomeGroup({
           <li
             key={segment.label}
             {...hoverProps(i)}
-            className={cn("flex min-w-0 flex-col gap-0.5 transition-opacity duration-300 ease-in-out", dimmed(i) && "opacity-40")}
+            className={cn(
+              "flex min-w-0 flex-col gap-0.5 transition-opacity duration-300 ease-in-out",
+              dimmed(i) && "opacity-40",
+            )}
           >
             <div className="flex flex-wrap items-center gap-1.5">
               <span aria-hidden className={cn("size-2.5 flex-none rounded-[2px]", colorOf(segment, i))} />
@@ -171,10 +236,9 @@ function OutcomeGroup({
               {segment.stat.health === "critical" && <HealthIcon health="critical" />}
               {segment.stat.health === "warning" && <span className="sr-only">Warning</span>}
             </div>
-            {/* Numerator and denominator on their own lines, so it always reads as a fraction. */}
-            <span className="flex flex-col text-xs font-medium text-muted-foreground tabular-nums">
-              <span>{segment.stat.ratio.count.toLocaleString()} trnx /</span>
-              <span>{segment.stat.ratio.total.toLocaleString()} {totalUnit}</span>
+            {/* Just the volume: the header already says what it's out of. */}
+            <span className="text-xs font-semibold text-foreground/75 tabular-nums">
+              {segment.stat.ratio.count.toLocaleString()} trnx
             </span>
           </li>
         ))}
@@ -184,24 +248,28 @@ function OutcomeGroup({
 }
 
 function SummarySkeleton() {
+  const group = (className?: string) => (
+    <div className={cn("flex flex-col gap-3", className)}>
+      <Skeleton className="h-4 w-40" />
+      <Skeleton className="h-4 w-full" />
+      <div className="grid grid-cols-3 gap-3.5">
+        {[0, 1, 2].map((j) => (
+          <Skeleton key={j} className="h-20" />
+        ))}
+      </div>
+    </div>
+  )
   return (
     <>
-      <div className="flex flex-[1_1_220px] flex-col gap-3" aria-label="Loading summary">
+      <div className="flex flex-[1_1_200px] flex-col gap-3" aria-label="Loading summary">
         <Skeleton className="h-4 w-20" />
         <Skeleton className="h-10 w-28" />
         <Skeleton className="h-12 w-44" />
       </div>
-      {[0, 1].map((i) => (
-        <div key={i} className="flex flex-[2_1_360px] flex-col gap-3">
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="h-4 w-full" />
-          <div className="grid grid-cols-3 gap-3.5">
-            {[0, 1, 2].map((j) => (
-              <Skeleton key={j} className="h-20" />
-            ))}
-          </div>
-        </div>
-      ))}
+      <div className="flex flex-[3_1_440px] flex-col gap-5">
+        {group()}
+        {group(cn("pl-4", UNDER_SECOND_COLUMN))}
+      </div>
     </>
   )
 }
