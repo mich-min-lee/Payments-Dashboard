@@ -1,20 +1,13 @@
 import { HealthBadge } from "@/components/health-badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatChange, formatPercent } from "@/lib/format"
-import type { Period, PeriodStat, PeriodSummary } from "@/lib/metrics"
+import { formatPercent } from "@/lib/format"
+import type { PeriodStat, PeriodSummary } from "@/lib/metrics"
 import { cn } from "@/lib/utils"
 
 export type SummaryState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; summary: PeriodSummary }
-
-/** Null: this period has nothing to compare with. */
-const COMPARED_WITH = {
-  today: "vs yesterday",
-  week: "vs last week",
-  month: null,
-} as const satisfies Record<Period, string | null>
 
 // Normal segments are shades of gray; color appears only when health is off.
 const NEUTRAL_SEGMENTS = ["bg-foreground/15", "bg-foreground/45", "bg-foreground/85"] as const
@@ -47,7 +40,6 @@ export function SummarySection({ state }: { state: SummaryState }) {
 
 function Summary({ summary }: { summary: PeriodSummary }) {
   const { stats } = summary
-  const comparedWith = COMPARED_WITH[summary.period]
 
   return (
     <>
@@ -67,13 +59,11 @@ function Summary({ summary }: { summary: PeriodSummary }) {
             total transactions
           </span>
         </div>
-        <Change stat={stats.threeDs} comparedWith={comparedWith} />
       </div>
 
       <OutcomeGroup
         title="3DS outcomes"
         basis={`Share of ${stats.threeDs.ratio.count.toLocaleString()} 3DS transactions`}
-        comparedWith={comparedWith}
         segments={[
           { label: "Frictionless", description: "Authenticated with no customer action", stat: stats.frictionless },
           { label: "Challenge", description: "Issuer requested customer verification", stat: stats.challenge },
@@ -84,7 +74,6 @@ function Summary({ summary }: { summary: PeriodSummary }) {
       <OutcomeGroup
         title="Challenge outcomes"
         basis={`Share of ${stats.challenge.ratio.count.toLocaleString()} challenges`}
-        comparedWith={comparedWith}
         segments={[
           { label: "Success", description: "Customer completed verification", stat: stats.success },
           { label: "Failed", description: "Customer did not pass verification", stat: stats.failed },
@@ -99,12 +88,10 @@ function OutcomeGroup({
   title,
   basis,
   segments,
-  comparedWith,
 }: {
   title: string
   basis: string
   segments: Segment[]
-  comparedWith: string | null
 }) {
   const colorOf = (segment: Segment, index: number) => {
     const { health } = segment.stat
@@ -146,20 +133,10 @@ function OutcomeGroup({
             </div>
             <span className="text-[22px] font-semibold tabular-nums">{formatPercent(segment.stat.ratio.rate)}</span>
             <span className="text-xs text-muted-foreground">{segment.description}</span>
-            <Change stat={segment.stat} comparedWith={comparedWith} />
           </li>
         ))}
       </ul>
     </div>
-  )
-}
-
-function Change({ stat, comparedWith }: { stat: PeriodStat; comparedWith: string | null }) {
-  if (comparedWith === null) return null
-  return (
-    <span className="text-xs text-muted-foreground tabular-nums">
-      {stat.change === null ? `No data ${comparedWith}` : formatChange(stat.change, comparedWith)}
-    </span>
   )
 }
 

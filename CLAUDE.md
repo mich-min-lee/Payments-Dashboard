@@ -67,8 +67,8 @@ deterministically and label them as mock wherever they appear.
 - Health status always comes from the fixed thresholds in `HEALTH_THRESHOLDS`
   (`src/lib/metrics.ts`): healthy / warning / critical. Never from period-over-period
   change.
-- Time period toggle: Today (vs yesterday), This week (vs last week), This month (no
-  comparison: the dataset only covers 30 days).
+- Time period toggle: Today, This week, This month (the last 1, 7, or 30 days of data).
+- No "vs yesterday / last week" change lines in the summary (removed on request).
 
 ## Code rules
 - Metric calculations are pure functions in one file, with Vitest tests. No
