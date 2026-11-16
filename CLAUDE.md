@@ -81,6 +81,13 @@ deterministically and label them as mock wherever they appear.
 - Health colors are semantic tokens (healthy, warning, critical) with light and dark
   values. Always pair color with a text label.
 - Use shadcn components before writing custom ones. Don't add a library without asking.
+- Add shadcn components only through the CLI, from the repo root:
+  `pnpm exec shadcn add <component>`. The theme (`radix-maia` style, `mist` base color)
+  comes from `components.json`, so never hand-write a component, paste code from the
+  shadcn docs (they show the new-york style), pass `--style`, or edit `components.json`
+  without asking. Use `--dry-run` or `--diff` to check before overwriting.
+- Use a component's own `variant` / `size` props before adding custom classes to restyle
+  it, so it keeps the theme's look.
 
 ## How to work with me
 I'm learning, so I work in two modes and will tell you which one we're in.

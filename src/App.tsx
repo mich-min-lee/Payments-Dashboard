@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react"
 import { MerchantTable } from "@/components/merchant-table"
 import { SummarySection, type SummaryState } from "@/components/summary-section"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
 import { formatDayRange } from "@/lib/format"
@@ -42,20 +43,33 @@ export default function App() {
             </p>
           )}
         </div>
+        {/* shadcn's dashboard pattern: a toggle group where there's room, a select on narrow screens. */}
         <ToggleGroup
           type="single"
-          variant="outline"
           aria-label="Time period"
           value={period}
           // Radix sends "" when the active item is clicked again; keep the current period.
           onValueChange={(value) => isPeriod(value) && setPeriod(value)}
+          className="hidden sm:flex"
         >
           {PERIODS.map((p) => (
-            <ToggleGroupItem key={p.value} value={p.value} className="h-11 px-4">
+            <ToggleGroupItem key={p.value} value={p.value}>
               {p.label}
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
+        <Select value={period} onValueChange={(value) => isPeriod(value) && setPeriod(value)}>
+          <SelectTrigger aria-label="Time period" className="w-40 sm:hidden">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PERIODS.map((p) => (
+              <SelectItem key={p.value} value={p.value}>
+                {p.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </header>
 
       <SummarySection state={summaryState} />
