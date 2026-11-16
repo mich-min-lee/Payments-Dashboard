@@ -1,5 +1,6 @@
 import { CircleAlert, CircleCheck, CircleX } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { Health } from "@/lib/metrics"
 import { cn } from "@/lib/utils"
 
@@ -24,14 +25,37 @@ const ICON_COLOR = { healthy: "text-healthy", warning: "text-warning", critical:
 // Icon-only shapes: critical is an exclamation, not an X (an X reads as "cancelled").
 const ICONS = { healthy: CircleCheck, warning: CircleAlert, critical: CircleAlert } as const
 
-/** Icon-only status for tight spaces. The word is read by screen readers and shown on hover. */
-export function HealthIcon({ health, className }: { health: Health; className?: string }) {
+/**
+ * Icon-only status for tight spaces. The word shows in a tooltip on hover or keyboard
+ * focus, and screen readers read it as the icon's label.
+ * Set `tooltip={false}` inside another control (e.g. a button) that already says it.
+ */
+export function HealthIcon({
+  health,
+  tooltip = true,
+  className,
+}: {
+  health: Health
+  tooltip?: boolean
+  className?: string
+}) {
   const { label } = HEALTH_STYLES[health]
   const Icon = ICONS[health]
-  return (
-    <span title={label} className={cn("inline-flex", ICON_COLOR[health], className)}>
+  const icon = (
+    <span
+      role="img"
+      aria-label={label}
+      tabIndex={tooltip ? 0 : undefined}
+      className={cn("inline-flex rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", ICON_COLOR[health], className)}
+    >
       <Icon aria-hidden className="size-4" />
-      <span className="sr-only">{label}</span>
     </span>
+  )
+  if (!tooltip) return icon
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{icon}</TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }

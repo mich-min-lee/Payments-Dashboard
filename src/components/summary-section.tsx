@@ -1,6 +1,9 @@
 import { useState, type ReactNode } from "react"
 import { ChevronDown } from "lucide-react"
 import { HealthIcon } from "@/components/health-badge"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Card, CardContent } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatPercent } from "@/lib/format"
 import type { PeriodStat, PeriodSummary } from "@/lib/metrics"
@@ -17,8 +20,6 @@ export type SummaryState =
 const NEUTRAL_SEGMENTS = ["bg-foreground/45", "bg-foreground/[0.78]", "bg-foreground"] as const
 const OFF_SEGMENT = { warning: "bg-warning", critical: "bg-critical" } as const
 const OFF_TEXT = { warning: "text-warning", critical: "text-critical" } as const
-
-const CHALLENGE_OUTCOMES_ID = "challenge-outcomes"
 
 // Lines a nested block up with the 2nd of 3 grid columns (gap-3.5 = 0.875rem):
 // one column width plus one gap.
@@ -39,21 +40,19 @@ function isOff(segment: Segment): segment is OffSegment {
 
 export function SummarySection({ state }: { state: SummaryState }) {
   return (
-    <section
-      aria-label="Summary"
-      aria-busy={state.status === "loading"}
-      className="flex flex-wrap gap-x-10 gap-y-7 rounded-xl border bg-card p-6"
-    >
-      {state.status === "loading" && <SummarySkeleton />}
-      {state.status === "error" && (
-        <div role="alert" className="text-sm">
-          <p className="font-medium text-critical">Couldn't load the summary</p>
-          <p className="mt-1 text-muted-foreground">{state.message}</p>
-        </div>
-      )}
-      {/* Keyed by period, so the challenge section re-decides open/closed when the period changes. */}
-      {state.status === "ready" && <Summary key={state.summary.period} summary={state.summary} />}
-    </section>
+    <Card role="region" aria-label="Summary" aria-busy={state.status === "loading"}>
+      <CardContent className="flex flex-wrap gap-x-10 gap-y-7">
+        {state.status === "loading" && <SummarySkeleton />}
+        {state.status === "error" && (
+          <Alert variant="destructive">
+            <AlertTitle>Couldn't load the summary</AlertTitle>
+            <AlertDescription>{state.message}</AlertDescription>
+          </Alert>
+        )}
+        {/* Keyed by period, so the challenge section re-decides open/closed when the period changes. */}
+        {state.status === "ready" && <Summary key={state.summary.period} summary={state.summary} />}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -74,30 +73,37 @@ function Summary({ summary }: { summary: PeriodSummary }) {
   const [challengeOpen, setChallengeOpen] = useState(offCount > 0)
 
   // The only control for the section: its own header. Closed, it also carries the status.
+  // The status text stays in the button when open, just invisible, so the click target is
+  // exactly the same size and spot open or closed. "Out of" sits outside the button.
   const challengeToggle = (
     <h2>
-      <button
-        type="button"
-        onClick={() => setChallengeOpen((open) => !open)}
-        aria-expanded={challengeOpen}
-        aria-controls={challengeOpen ? CHALLENGE_OUTCOMES_ID : undefined}
-        className="-mx-2 -my-1 flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-muted"
+      <CollapsibleTrigger
+        // No hover box: the title darkens and the chevron nudges toward where it opens.
+        // Keyboard focus still gets a visible outline.
+        className="group -mx-2 -my-1 flex items-center gap-1.5 rounded-md px-2 py-1 text-left text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >
-        <span className="font-semibold">Challenge outcomes</span>
-        {!challengeOpen &&
-          (offCount === 0 ? (
+        <ChevronDown
+          aria-hidden
+          className={cn(
+            "size-4 flex-none text-muted-foreground transition-[rotate,translate,color] duration-300 ease-in-out group-hover:text-foreground motion-reduce:transition-none",
+            challengeOpen ? "group-hover:translate-y-0.5" : "-rotate-90 group-hover:translate-x-0.5",
+          )}
+        />
+        <span className="font-semibold text-foreground/80 transition-colors duration-300 ease-in-out group-hover:text-foreground">
+          Challenge outcomes
+        </span>
+        <span className={cn("flex items-center gap-1", challengeOpen && "invisible")}>
+          {offCount === 0 ? (
             <span className="text-muted-foreground">· All healthy</span>
           ) : (
             <span className={cn("flex items-center gap-1 font-medium", OFF_TEXT[worst])}>
               · Needs Attention
-              {worst === "critical" && <HealthIcon health="critical" />}
+              {/* No tooltip here: it's inside a button, and the text already says it. */}
+              {worst === "critical" && <HealthIcon health="critical" tooltip={false} />}
             </span>
-          ))}
-        <ChevronDown
-          aria-hidden
-          className={cn("size-4 text-muted-foreground transition-transform duration-300", !challengeOpen && "-rotate-90")}
-        />
-      </button>
+          )}
+        </span>
+      </CollapsibleTrigger>
     </h2>
   )
 
@@ -128,37 +134,52 @@ function Summary({ summary }: { summary: PeriodSummary }) {
         />
 
         {/* Nested under the Challenge column: these outcomes are a breakdown of Challenge. */}
-        <div className={cn("border-l-2 pl-4", UNDER_SECOND_COLUMN)}>
-          {challengeOpen ? (
-            <OutcomeGroup
-              id={CHALLENGE_OUTCOMES_ID}
-              title="Challenge outcomes"
-              heading={challengeToggle}
-              baseCount={stats.challenge.ratio.count}
-              totalUnit="challenged trnx"
-              segments={challengeSegments}
-            />
-          ) : (
-            challengeToggle
-          )}
-        </div>
+        <Collapsible
+          open={challengeOpen}
+          onOpenChange={setChallengeOpen}
+          className={cn("border-l-2 pl-4", UNDER_SECOND_COLUMN)}
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            {challengeToggle}
+            <span
+              aria-hidden={!challengeOpen}
+              className={cn(
+                "transition-opacity duration-300 ease-in-out motion-reduce:transition-none",
+                !challengeOpen && "opacity-0",
+              )}
+            >
+              <Basis count={stats.challenge.ratio.count} unit="challenged trnx" />
+            </span>
+          </div>
+
+          {/* Radix measures the content's height; tw-animate-css slides between 0 and it. */}
+          <CollapsibleContent className="overflow-hidden duration-300 ease-in-out data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none">
+            <div className="pt-3">
+              <OutcomeGroup
+                title="Challenge outcomes"
+                heading={null}
+                baseCount={stats.challenge.ratio.count}
+                totalUnit="challenged trnx"
+                segments={challengeSegments}
+              />
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       </div>
     </>
   )
 }
 
 function OutcomeGroup({
-  id,
   title,
   heading,
   baseCount,
   totalUnit,
   segments,
 }: {
-  id?: string
   /** Used for the bar's screen-reader label, and as the heading unless `heading` is given. */
   title: string
-  /** Replaces the plain heading, e.g. with a toggle button. */
+  /** Replaces the whole header row (title + "Out of"). `null` hides it. */
   heading?: ReactNode
   /** How many transactions every segment divides by. */
   baseCount: number
@@ -179,16 +200,13 @@ function OutcomeGroup({
   })
 
   return (
-    <div id={id} className="flex min-w-0 flex-col gap-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        {heading ?? <h2 className="text-sm font-semibold">{title}</h2>}
-        <span className="text-xs text-foreground/75">
-          Out of{" "}
-          <b className="font-semibold">
-            {baseCount.toLocaleString()} {totalUnit}
-          </b>
-        </span>
-      </div>
+    <div className="flex min-w-0 flex-col gap-3">
+      {heading !== undefined ? heading : (
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <h2 className="text-sm font-semibold">{title}</h2>
+          <Basis count={baseCount} unit={totalUnit} />
+        </div>
+      )}
 
       {/* The bar repeats the legend's numbers, so screen readers get one summary line. */}
       <div
@@ -244,6 +262,18 @@ function OutcomeGroup({
         ))}
       </ul>
     </div>
+  )
+}
+
+/** "Out of 166 3DS trnx": what every segment in a group divides by. */
+function Basis({ count, unit }: { count: number; unit: string }) {
+  return (
+    <span className="text-xs text-foreground/75">
+      Out of{" "}
+      <b className="font-semibold">
+        {count.toLocaleString()} {unit}
+      </b>
+    </span>
   )
 }
 
