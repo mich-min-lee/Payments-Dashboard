@@ -48,15 +48,15 @@ function Summary({ summary }: { summary: PeriodSummary }) {
         <p className="text-4xl leading-none font-semibold tracking-tight tabular-nums">
           {formatPercent(stats.threeDs.ratio.rate)}
         </p>
-        <div className="flex flex-col items-start gap-1 text-[13px] text-muted-foreground tabular-nums">
+        <div className="flex w-fit flex-col gap-1 text-[13px] text-muted-foreground tabular-nums">
           <span>
             <b className="font-semibold text-foreground">{stats.threeDs.ratio.count.toLocaleString()}</b>{" "}
             3DS transactions
           </span>
-          <span aria-hidden className="w-full max-w-48 border-t border-foreground/40" />
+          <span aria-hidden className="border-t border-foreground/40" />
           <span>
             <b className="font-semibold text-foreground">{stats.threeDs.ratio.total.toLocaleString()}</b>{" "}
-            total transactions
+            Total transactions
           </span>
         </div>
       </div>
@@ -64,6 +64,7 @@ function Summary({ summary }: { summary: PeriodSummary }) {
       <OutcomeGroup
         title="3DS outcomes"
         basis={`Share of ${stats.threeDs.ratio.count.toLocaleString()} 3DS transactions`}
+        totalUnit="3DS trnx"
         segments={[
           { label: "Frictionless", description: "Authenticated with no customer action", stat: stats.frictionless },
           { label: "Challenge", description: "Issuer requested customer verification", stat: stats.challenge },
@@ -74,6 +75,7 @@ function Summary({ summary }: { summary: PeriodSummary }) {
       <OutcomeGroup
         title="Challenge outcomes"
         basis={`Share of ${stats.challenge.ratio.count.toLocaleString()} challenges`}
+        totalUnit="challenged trnx"
         segments={[
           { label: "Success", description: "Customer completed verification", stat: stats.success },
           { label: "Failed", description: "Customer did not pass verification", stat: stats.failed },
@@ -87,10 +89,13 @@ function Summary({ summary }: { summary: PeriodSummary }) {
 function OutcomeGroup({
   title,
   basis,
+  totalUnit,
   segments,
 }: {
   title: string
   basis: string
+  /** What every segment divides by, e.g. "3DS trnx". */
+  totalUnit: string
   segments: Segment[]
 }) {
   const colorOf = (segment: Segment, index: number) => {
@@ -132,6 +137,10 @@ function OutcomeGroup({
               )}
             </div>
             <span className="text-[22px] font-semibold tabular-nums">{formatPercent(segment.stat.ratio.rate)}</span>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {segment.stat.ratio.count.toLocaleString()} trnx /{" "}
+              {segment.stat.ratio.total.toLocaleString()} {totalUnit}
+            </span>
             <span className="text-xs text-muted-foreground">{segment.description}</span>
           </li>
         ))}
