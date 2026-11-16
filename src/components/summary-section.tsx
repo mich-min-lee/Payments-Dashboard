@@ -12,6 +12,14 @@ export type SummaryState =
 // Normal segments are shades of gray; color appears only when health is off.
 const NEUTRAL_SEGMENTS = ["bg-foreground/15", "bg-foreground/45", "bg-foreground/85"] as const
 const OFF_SEGMENT = { warning: "bg-warning", critical: "bg-critical" } as const
+const OFF_TEXT = { warning: "text-warning", critical: "text-critical" } as const
+
+type OffSegment = Segment & { stat: { health: "warning" | "critical" } }
+
+/** Warning or critical: the only states that get color. */
+function isOff(segment: Segment): segment is OffSegment {
+  return segment.stat.health === "warning" || segment.stat.health === "critical"
+}
 
 interface Segment {
   label: string
@@ -66,9 +74,9 @@ function Summary({ summary }: { summary: PeriodSummary }) {
         basis={`Share of ${stats.threeDs.ratio.count.toLocaleString()} 3DS transactions`}
         totalUnit="3DS trnx"
         segments={[
-          { label: "Frictionless", description: "Authenticated with no customer action", stat: stats.frictionless },
-          { label: "Challenge", description: "Issuer requested customer verification", stat: stats.challenge },
-          { label: "Rejection", description: "Authentication declined by issuer", stat: stats.rejected },
+          { label: "Frictionless", description: "Approved with no extra step", stat: stats.frictionless },
+          { label: "Challenge", description: "Bank asked customer to verify", stat: stats.challenge },
+          { label: "Rejection", description: "Declined by the bank", stat: stats.rejected },
         ]}
       />
 
@@ -77,9 +85,9 @@ function Summary({ summary }: { summary: PeriodSummary }) {
         basis={`Share of ${stats.challenge.ratio.count.toLocaleString()} challenges`}
         totalUnit="challenged trnx"
         segments={[
-          { label: "Success", description: "Customer completed verification", stat: stats.success },
-          { label: "Failed", description: "Customer did not pass verification", stat: stats.failed },
-          { label: "Abandoned", description: "Customer exited before completing", stat: stats.abandoned },
+          { label: "Success", description: "Customer verified", stat: stats.success },
+          { label: "Failed", description: "Customer couldn't verify", stat: stats.failed },
+          { label: "Abandoned", description: "Customer quit midway", stat: stats.abandoned },
         ]}
       />
     </>
@@ -98,10 +106,9 @@ function OutcomeGroup({
   totalUnit: string
   segments: Segment[]
 }) {
-  const colorOf = (segment: Segment, index: number) => {
-    const { health } = segment.stat
-    return health === "warning" || health === "critical" ? OFF_SEGMENT[health] : NEUTRAL_SEGMENTS[index]
-  }
+  const colorOf = (segment: Segment, index: number) =>
+    isOff(segment) ? OFF_SEGMENT[segment.stat.health] : NEUTRAL_SEGMENTS[index]
+  const offText = (segment: Segment) => (isOff(segment) ? OFF_TEXT[segment.stat.health] : undefined)
 
   return (
     <div className="flex min-w-0 flex-[2_1_360px] flex-col gap-3">
@@ -131,17 +138,22 @@ function OutcomeGroup({
             <div className="flex flex-wrap items-center gap-1.5">
               <span aria-hidden className={cn("size-2.5 flex-none rounded-[2px]", colorOf(segment, i))} />
               <span className="text-[13px] font-medium">{segment.label}</span>
-              {/* Loud only when off: healthy shows no badge. */}
-              {segment.stat.health && segment.stat.health !== "healthy" && (
-                <HealthBadge health={segment.stat.health} />
-              )}
             </div>
-            <span className="text-[22px] font-semibold tabular-nums">{formatPercent(segment.stat.ratio.rate)}</span>
+            {/* Always 2 lines tall, so the percentages line up across the row. */}
+            <span className="line-clamp-2 min-h-[2lh] text-xs text-muted-foreground">{segment.description}</span>
+            <span className={cn("mt-1 text-[22px] font-semibold tabular-nums", offText(segment))}>
+              {formatPercent(segment.stat.ratio.rate)}
+            </span>
             <span className="text-xs text-muted-foreground tabular-nums">
               {segment.stat.ratio.count.toLocaleString()} trnx /{" "}
               {segment.stat.ratio.total.toLocaleString()} {totalUnit}
             </span>
-            <span className="text-xs text-muted-foreground">{segment.description}</span>
+            {/* Loud only when off. The badge is the text label that goes with the colored number. */}
+            {isOff(segment) && (
+              <div className="mt-1">
+                <HealthBadge health={segment.stat.health} />
+              </div>
+            )}
           </li>
         ))}
       </ul>
