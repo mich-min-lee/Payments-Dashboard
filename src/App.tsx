@@ -1,32 +1,64 @@
-import { useMemo } from "react"
-import { KpiFunnel, type KpiFunnelState } from "@/components/kpi-funnel"
+import { useMemo, useState } from "react"
 import { MerchantTable } from "@/components/merchant-table"
+import { SummarySection, type SummaryState } from "@/components/summary-section"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { useDashboardData } from "@/hooks/use-dashboard-data"
-import { funnelMetrics } from "@/lib/metrics"
+import { formatDayRange } from "@/lib/format"
+import { periodSummary, type Period } from "@/lib/metrics"
+
+const PERIODS = [
+  { value: "today", label: "Today" },
+  { value: "week", label: "This week" },
+  { value: "month", label: "This month" },
+] as const satisfies readonly { value: Period; label: string }[]
+
+function isPeriod(value: string): value is Period {
+  return PERIODS.some((p) => p.value === value)
+}
 
 export default function App() {
   const data = useDashboardData()
+  const [period, setPeriod] = useState<Period>("today")
 
-  // The only place funnel numbers are computed; the funnel just displays them.
-  const funnelState = useMemo<KpiFunnelState>(() => {
+  // The only place summary numbers are computed; the section just displays them.
+  const summaryState = useMemo<SummaryState>(() => {
     if (data.status === "loading") return { status: "loading" }
     if (data.status === "error") return { status: "error", message: data.error }
-    return { status: "ready", funnel: funnelMetrics(data.transactions) }
-  }, [data])
+    const summary = periodSummary(data.transactions, period)
+    return summary
+      ? { status: "ready", summary }
+      : { status: "error", message: "No transactions to summarize." }
+  }, [data, period])
 
   return (
     <main className="mx-auto min-h-svh max-w-6xl p-8">
-      <h1 className="text-2xl font-semibold tracking-tight">3DS Dashboard</h1>
-      {data.status === "success" && (
-        <p className="mt-1 text-sm text-muted-foreground">
-          {data.transactions.length.toLocaleString()} transactions
-          {data.skipped > 0 && ` (${data.skipped} skipped as invalid)`}
-        </p>
-      )}
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">3DS performance</h1>
+          {summaryState.status === "ready" && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {formatDayRange(summaryState.summary.from, summaryState.summary.to)}
+              {data.status === "success" && data.skipped > 0 && ` · ${data.skipped} invalid records skipped`}
+            </p>
+          )}
+        </div>
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          aria-label="Time period"
+          value={period}
+          // Radix sends "" when the active item is clicked again; keep the current period.
+          onValueChange={(value) => isPeriod(value) && setPeriod(value)}
+        >
+          {PERIODS.map((p) => (
+            <ToggleGroupItem key={p.value} value={p.value} className="h-11 px-4">
+              {p.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </header>
 
-      <div className="mt-6">
-        <KpiFunnel state={funnelState} />
-      </div>
+      <SummarySection state={summaryState} />
 
       {data.status === "success" && (
         <section className="mt-10">

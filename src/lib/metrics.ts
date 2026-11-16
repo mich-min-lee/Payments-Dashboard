@@ -216,10 +216,73 @@ export function funnelMetrics(transactions: readonly Transaction[]): FunnelMetri
   }
 }
 
-/** How loudly a card should speak: size and weight only, never color. */
-export type Emphasis = "strong" | "default" | "quiet"
+export const FUNNEL_KEYS = [
+  "threeDs",
+  "frictionless",
+  "challenge",
+  "rejected",
+  "success",
+  "failed",
+  "abandoned",
+] as const satisfies readonly (keyof FunnelMetrics)[]
 
-/** Rejected stays quiet until it needs attention. */
-export function rejectedEmphasis(health: Health | null): Emphasis {
-  return health === "warning" || health === "critical" ? "default" : "quiet"
+export type Period = "today" | "week" | "month"
+
+const PERIOD_DAYS = { today: 1, week: 7, month: 30 } as const satisfies Record<Period, number>
+
+/** The dataset covers 30 days, so a month has no previous month to compare with. */
+const HAS_COMPARISON = { today: true, week: true, month: false } as const satisfies Record<Period, boolean>
+
+/** A funnel number for a period, plus its change vs. the period before (null = no comparison). */
+export interface PeriodStat extends FunnelStat {
+  change: number | null
+}
+
+export interface PeriodSummary {
+  period: Period
+  /** Inclusive "YYYY-MM-DD" range. */
+  from: string
+  to: string
+  stats: Record<keyof FunnelMetrics, PeriodStat>
+}
+
+/** "2026-02-03" shifted by n days, in UTC so time zones can't move it. */
+export function shiftDate(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * Funnel numbers for the last day, 7 days, or 30 days of the data, with the change
+ * vs. the same length of time just before. Null when there are no transactions.
+ */
+export function periodSummary(
+  transactions: readonly Transaction[],
+  period: Period,
+): PeriodSummary | null {
+  if (transactions.length === 0) return null
+
+  // "YYYY-MM-DD" strings sort and compare like dates.
+  const to = transactions.reduce((latest, t) => (t.date > latest ? t.date : latest), "")
+  const days = PERIOD_DAYS[period]
+  const from = shiftDate(to, -(days - 1))
+  const between = (start: string, end: string) =>
+    transactions.filter((t) => t.date >= start && t.date <= end)
+
+  const current = funnelMetrics(between(from, to))
+  const previous = HAS_COMPARISON[period]
+    ? funnelMetrics(between(shiftDate(from, -days), shiftDate(from, -1)))
+    : null
+
+  const stats = Object.fromEntries(
+    FUNNEL_KEYS.map((key) => {
+      const now = current[key].ratio.rate
+      const before = previous?.[key].ratio.rate ?? null
+      const change = now === null || before === null ? null : now - before
+      return [key, { ...current[key], change }]
+    }),
+  ) as Record<keyof FunnelMetrics, PeriodStat>
+
+  return { period, from, to, stats }
 }

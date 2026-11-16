@@ -63,6 +63,13 @@ Note: the dataset has no merchant field. Treat the merchant table as a concept t
 needs mock data, and never invent merchant values silently: assign mock merchants
 deterministically and label them as mock wherever they appear.
 
+## Decisions from the dashboard mockup
+- Health status always comes from the fixed thresholds in `HEALTH_THRESHOLDS`
+  (`src/lib/metrics.ts`): healthy / warning / critical. Never from period-over-period
+  change.
+- Time period toggle: Today (vs yesterday), This week (vs last week), This month (no
+  comparison: the dataset only covers 30 days).
+
 ## Code rules
 - Metric calculations are pure functions in one file, with Vitest tests. No
   calculations inside components.

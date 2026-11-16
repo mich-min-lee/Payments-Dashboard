@@ -9,7 +9,8 @@ import {
   healthOf,
   merchantMetrics,
   ratio,
-  rejectedEmphasis,
+  periodSummary,
+  shiftDate,
   threeDsOutcomes,
   threeDsRate,
 } from "./metrics"
@@ -181,11 +182,48 @@ describe("funnelMetrics", () => {
   })
 })
 
-describe("rejectedEmphasis", () => {
-  it("is quiet when healthy and speaks up otherwise", () => {
-    expect(rejectedEmphasis("healthy")).toBe("quiet")
-    expect(rejectedEmphasis(null)).toBe("quiet")
-    expect(rejectedEmphasis("warning")).toBe("default")
-    expect(rejectedEmphasis("critical")).toBe("default")
+describe("periodSummary", () => {
+  const data = [
+    // Feb 1: 0% 3DS
+    tx({ date: "2026-02-01" }),
+    // Feb 2: 50% 3DS
+    tx({ date: "2026-02-02" }),
+    tx({ date: "2026-02-02", threeDsStatus: "frictionless" }),
+    // Feb 3 (latest): 100% 3DS
+    tx({ date: "2026-02-03", threeDsStatus: "rejected" }),
+  ]
+
+  it("today is the latest day, compared with the day before", () => {
+    const summary = periodSummary(data, "today")
+    expect(summary?.from).toBe("2026-02-03")
+    expect(summary?.to).toBe("2026-02-03")
+    expect(summary?.stats.threeDs.ratio.rate).toBe(1)
+    expect(summary?.stats.threeDs.change).toBeCloseTo(0.5) // 100% vs 50%
+  })
+
+  it("week covers the last 7 days; no earlier data means no change", () => {
+    const summary = periodSummary(data, "week")
+    expect(summary?.from).toBe("2026-01-28")
+    expect(summary?.stats.threeDs.ratio).toEqual({ count: 2, total: 4, rate: 0.5 })
+    expect(summary?.stats.threeDs.change).toBeNull()
+  })
+
+  it("month has no comparison", () => {
+    expect(periodSummary(data, "month")?.stats.rejected.change).toBeNull()
+  })
+
+  it("keeps health from the fixed thresholds", () => {
+    // Today: 1 of 1 3DS transactions rejected = 100% > 15%
+    expect(periodSummary(data, "today")?.stats.rejected.health).toBe("critical")
+  })
+
+  it("is null with no data", () => {
+    expect(periodSummary([], "today")).toBeNull()
+  })
+})
+
+describe("shiftDate", () => {
+  it("crosses month boundaries", () => {
+    expect(shiftDate("2026-03-01", -1)).toBe("2026-02-28")
   })
 })
