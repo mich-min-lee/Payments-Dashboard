@@ -41,7 +41,10 @@ function isOff(segment: Segment): segment is OffSegment {
 export function SummarySection({ state }: { state: SummaryState }) {
   return (
     <Card role="region" aria-label="Summary" aria-busy={state.status === "loading"}>
-      <CardContent className="flex flex-wrap gap-x-10 gap-y-7">
+      {/* flex-row overrides CardContent's default flex-col; in a column, the children's flex-basis
+          (200px / 440px) would become minimum heights and the card couldn't shrink when the
+          challenge breakdown collapses. */}
+      <CardContent className="flex-row flex-wrap gap-x-10 gap-y-7">
         {state.status === "loading" && <SummarySkeleton />}
         {state.status === "error" && (
           <Alert variant="destructive">

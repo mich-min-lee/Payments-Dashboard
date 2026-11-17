@@ -51,57 +51,6 @@ export function challengeOutcomes(
   return mapStatuses(CHALLENGE_STATUSES, (status) => ratio(counts[status], total))
 }
 
-export interface DailyMetrics {
-  date: string
-  threeDsRate: Ratio
-  threeDsOutcomes: Record<ThreeDsStatus, Ratio>
-  challengeOutcomes: Record<ChallengeStatus, Ratio>
-}
-
-/** All three metrics for each day, oldest first. */
-export function dailyMetrics(transactions: readonly Transaction[]): DailyMetrics[] {
-  const byDate = new Map<string, Transaction[]>()
-  for (const t of transactions) {
-    const day = byDate.get(t.date)
-    if (day) day.push(t)
-    else byDate.set(t.date, [t])
-  }
-  return [...byDate.keys()].sort().map((date) => {
-    const day = byDate.get(date) ?? []
-    return {
-      date,
-      threeDsRate: threeDsRate(day),
-      threeDsOutcomes: threeDsOutcomes(day),
-      challengeOutcomes: challengeOutcomes(day),
-    }
-  })
-}
-
-export interface ChallengeShift {
-  /** The day the change happened (compared with the day before). */
-  date: string
-  outcome: ChallengeStatus
-  /** Change in rate, e.g. -0.12 means the rate fell 12 percentage points. */
-  change: number
-}
-
-/** The largest day-over-day move in any challenge outcome rate. */
-export function biggestChallengeShift(days: readonly DailyMetrics[]): ChallengeShift | null {
-  let biggest: ChallengeShift | null = null
-  for (let i = 1; i < days.length; i++) {
-    for (const outcome of CHALLENGE_STATUSES) {
-      const before = days[i - 1].challengeOutcomes[outcome].rate
-      const after = days[i].challengeOutcomes[outcome].rate
-      if (before === null || after === null) continue
-      const change = after - before
-      if (biggest === null || Math.abs(change) > Math.abs(biggest.change)) {
-        biggest = { date: days[i].date, outcome, change }
-      }
-    }
-  }
-  return biggest
-}
-
 function mapStatuses<S extends string, V>(
   statuses: readonly S[],
   fn: (status: S) => V,
@@ -146,8 +95,9 @@ export interface MerchantMetrics {
   threeDsRate: Ratio
   threeDsOutcomes: Record<ThreeDsStatus, Ratio>
   challengeOutcomes: Record<ChallengeStatus, Ratio>
-  daily: DailyMetrics[]
-  biggestChallengeShift: ChallengeShift | null
+  funnel: FunnelMetrics
+  /** What's off for this merchant, most urgent first. */
+  issues: Issue[]
 }
 
 /** All metrics per merchant, sorted by name. `merchantOf` decides each transaction's merchant. */
@@ -164,14 +114,14 @@ export function merchantMetrics(
   }
   return [...byMerchant.keys()].sort().map((merchant) => {
     const group = byMerchant.get(merchant) ?? []
-    const daily = dailyMetrics(group)
+    const funnel = funnelMetrics(group)
     return {
       merchant,
       threeDsRate: threeDsRate(group),
       threeDsOutcomes: threeDsOutcomes(group),
       challengeOutcomes: challengeOutcomes(group),
-      daily,
-      biggestChallengeShift: biggestChallengeShift(daily),
+      funnel,
+      issues: issuesOf(funnel),
     }
   })
 }
@@ -285,4 +235,264 @@ export function periodSummary(
   ) as Record<keyof FunnelMetrics, PeriodStat>
 
   return { period, from, to, stats }
+}
+
+// ─── Merchant detail: "wait, what's that?" ────────────────────────────────────
+
+/** The six outcome rates ops can drill into (everything in the funnel except 3DS rate). */
+export const OUTCOME_KEYS = [
+  "frictionless",
+  "challenge",
+  "rejected",
+  "success",
+  "failed",
+  "abandoned",
+] as const satisfies readonly (keyof FunnelMetrics)[]
+
+export type OutcomeKey = (typeof OUTCOME_KEYS)[number]
+
+export const OUTCOME_THRESHOLDS: Record<OutcomeKey, HealthThreshold> = {
+  frictionless: HEALTH_THRESHOLDS.frictionless,
+  challenge: HEALTH_THRESHOLDS.challenge,
+  rejected: HEALTH_THRESHOLDS.rejection,
+  success: HEALTH_THRESHOLDS.challengeSuccess,
+  failed: HEALTH_THRESHOLDS.failed,
+  abandoned: HEALTH_THRESHOLDS.abandonment,
+}
+
+/** Ops' priority order (from the ops interview), used to break ties. */
+const OPS_PRIORITY: readonly OutcomeKey[] = ["abandoned", "frictionless", "rejected", "success", "failed", "challenge"]
+
+/** Fewer transactions than this: "too few to tell yet". */
+export const MIN_SAMPLE = 30
+/** Healthy for this many days in a row = recovered. */
+export const RECOVERY_DAYS = 2
+/** Daily numbers per merchant are tiny, so each day pools the last few days. */
+export const ROLLING_DAYS = 3
+
+export interface Issue {
+  key: OutcomeKey
+  health: "warning" | "critical"
+  ratio: Ratio
+}
+
+/** The off rates in a funnel: critical before warning, then ops' priority order. */
+export function issuesOf(funnel: FunnelMetrics): Issue[] {
+  const issues: Issue[] = []
+  for (const key of OUTCOME_KEYS) {
+    const { health, ratio } = funnel[key]
+    if (health === "warning" || health === "critical") issues.push({ key, health, ratio })
+  }
+  return issues.sort(
+    (a, b) =>
+      Number(b.health === "critical") - Number(a.health === "critical") ||
+      OPS_PRIORITY.indexOf(a.key) - OPS_PRIORITY.indexOf(b.key),
+  )
+}
+
+/** Every date from the earliest to the latest transaction, so lines line up day by day. */
+export function dateRange(transactions: readonly Transaction[]): string[] {
+  if (transactions.length === 0) return []
+  let first = transactions[0].date
+  let last = first
+  for (const t of transactions) {
+    if (t.date < first) first = t.date
+    if (t.date > last) last = t.date
+  }
+  const dates: string[] = []
+  for (let d = first; d <= last; d = shiftDate(d, 1)) dates.push(d)
+  return dates
+}
+
+export interface TrendPoint {
+  date: string
+  /** Pooled over this day and the ROLLING_DAYS - 1 days before it. */
+  ratio: Ratio
+  health: Health | null
+}
+
+/** One outcome rate per day, smoothed by pooling the last few days. */
+export function rollingTrend(
+  transactions: readonly Transaction[],
+  key: OutcomeKey,
+  dates: readonly string[],
+  window: number = ROLLING_DAYS,
+): TrendPoint[] {
+  const byDate = new Map<string, Transaction[]>()
+  for (const t of transactions) {
+    const day = byDate.get(t.date)
+    if (day) day.push(t)
+    else byDate.set(t.date, [t])
+  }
+  return dates.map((date, i) => {
+    const pooled = dates.slice(Math.max(0, i - window + 1), i + 1).flatMap((d) => byDate.get(d) ?? [])
+    const { ratio } = funnelMetrics(pooled)[key]
+    return { date, ratio, health: healthOf(ratio.rate, OUTCOME_THRESHOLDS[key]) }
+  })
+}
+
+/** The 3DS outcomes the trend chart plots, in the same order as the table and summary. */
+export const TREND_KEYS = ["frictionless", "challenge", "rejected"] as const satisfies readonly OutcomeKey[]
+
+export type TrendKey = (typeof TREND_KEYS)[number]
+
+/**
+ * One raw rate per day for each 3DS outcome (no pooling: the full dataset has ~200 trnx a day).
+ * The caller passes the dates, so a filtered view keeps the same x-axis as the full one.
+ */
+export function dailyTrends(
+  transactions: readonly Transaction[],
+  dates: readonly string[],
+): Record<TrendKey, TrendPoint[]> {
+  return mapStatuses(TREND_KEYS, (key) => rollingTrend(transactions, key, dates, 1))
+}
+
+/**
+ * Top of a trend chart's y-axis: one 10% step above the highest rate or threshold,
+ * so both threshold lines always show with room above them. Never above 100%.
+ */
+export function trendCeiling(points: readonly TrendPoint[], threshold: HealthThreshold): number {
+  const top = Math.max(threshold.healthy, threshold.critical, ...points.map((p) => p.ratio.rate ?? 0))
+  // Whole steps of 10, then divide, so float error can't give 0.30000000000000004.
+  return Math.min(10, Math.floor(top * 10) + 1) / 10
+}
+
+export type TrendStatus = "ongoing" | "improving" | "recovered" | "healthy"
+
+export interface TrendStory {
+  status: TrendStatus
+  /** First day of the most recent off stretch. Null if it was never off. */
+  onset: string | null
+  /** Last off day of that stretch. */
+  lastOff: string | null
+}
+
+/**
+ * When it started and whether it's still going. Recovered = healthy for the last
+ * RECOVERY_DAYS days; improving = healthy lately, but not for long enough yet.
+ */
+export function trendStory(points: readonly TrendPoint[]): TrendStory {
+  const isOff = (p: TrendPoint) => p.health === "warning" || p.health === "critical"
+  let lastOffIndex = -1
+  points.forEach((p, i) => {
+    if (isOff(p)) lastOffIndex = i
+  })
+  if (lastOffIndex === -1) return { status: "healthy", onset: null, lastOff: null }
+
+  let onsetIndex = lastOffIndex
+  while (onsetIndex > 0 && isOff(points[onsetIndex - 1])) onsetIndex--
+  const onset = points[onsetIndex].date
+  const lastOff = points[lastOffIndex].date
+
+  if (lastOffIndex === points.length - 1) return { status: "ongoing", onset, lastOff }
+  const healthyTail = points.slice(lastOffIndex + 1).filter((p) => p.health === "healthy").length
+  return { status: healthyTail >= RECOVERY_DAYS ? "recovered" : "improving", onset, lastOff }
+}
+
+export interface BankRate {
+  bank: string
+  ratio: Ratio
+  health: Health | null
+}
+
+const SEVERITY = { critical: 0, warning: 1, healthy: 2 } as const
+
+/** One outcome rate per bank, worst first. */
+export function bankBreakdown(
+  transactions: readonly Transaction[],
+  key: OutcomeKey,
+  bankOf: (transaction: Transaction) => string,
+): BankRate[] {
+  const { direction } = OUTCOME_THRESHOLDS[key]
+  const byBank = new Map<string, Transaction[]>()
+  for (const t of transactions) {
+    const bank = bankOf(t)
+    const group = byBank.get(bank)
+    if (group) group.push(t)
+    else byBank.set(bank, [t])
+  }
+  return [...byBank.entries()]
+    .map(([bank, group]) => {
+      const { ratio } = funnelMetrics(group)[key]
+      return { bank, ratio, health: healthOf(ratio.rate, OUTCOME_THRESHOLDS[key]) }
+    })
+    .sort((a, b) => {
+      const bySeverity = (a.health ? SEVERITY[a.health] : 3) - (b.health ? SEVERITY[b.health] : 3)
+      // Same status: the further in the bad direction, the worse.
+      const badness = (r: BankRate) => (direction === "lower-is-better" ? 1 : -1) * (r.ratio.rate ?? 0)
+      return bySeverity || badness(b) - badness(a) || a.bank.localeCompare(b.bank)
+    })
+}
+
+/** Ops' next step depends on this: one bank → that bank; most banks → our side or the merchant's. */
+export type BankVerdict = "one-bank" | "across-banks" | "none" | "unclear"
+
+export function bankVerdict(banks: readonly BankRate[]): BankVerdict {
+  // Ignore banks with too few transactions to judge.
+  const judged = banks.filter((b) => b.ratio.total >= MIN_SAMPLE)
+  const off = judged.filter((b) => b.health === "warning" || b.health === "critical")
+  if (off.length === 0) return "none"
+  if (off.length === 1 && judged.length > 1) return "one-bank"
+  if (off.length >= Math.ceil(judged.length / 2)) return "across-banks"
+  return "unclear"
+}
+
+export interface BankSummary {
+  verdict: BankVerdict
+  /** The worst bank with enough transactions to judge. */
+  worst: BankRate | null
+  /** Every other judged bank pooled together: "others around 20%". */
+  rest: Ratio | null
+  /** Lowest and highest judged bank rate: "spread across banks (16–21%)". */
+  range: [number, number] | null
+}
+
+export function bankSummary(banks: readonly BankRate[]): BankSummary {
+  const judged = banks.filter((b) => b.ratio.total >= MIN_SAMPLE && b.ratio.rate !== null)
+  const verdict = bankVerdict(banks)
+  if (judged.length === 0) return { verdict, worst: null, rest: null, range: null }
+
+  // bankBreakdown already sorts worst first.
+  const [worst, ...others] = judged
+  const rest = others.length
+    ? ratio(
+        others.reduce((sum, b) => sum + b.ratio.count, 0),
+        others.reduce((sum, b) => sum + b.ratio.total, 0),
+      )
+    : null
+  const rates = judged.map((b) => b.ratio.rate ?? 0)
+  return { verdict, worst, rest, range: [Math.min(...rates), Math.max(...rates)] }
+}
+
+export interface MerchantDetail {
+  key: OutcomeKey
+  /** The whole month for this merchant. */
+  overall: FunnelStat
+  /** Too few transactions to trust the rate. */
+  smallSample: boolean
+  trend: TrendPoint[]
+  story: TrendStory
+  banks: BankSummary
+}
+
+export function merchantDetail(
+  transactions: readonly Transaction[],
+  merchant: string,
+  key: OutcomeKey,
+  merchantOf: (transaction: Transaction) => string,
+  bankOf: (transaction: Transaction) => string,
+): MerchantDetail {
+  const dates = dateRange(transactions)
+  const mine = transactions.filter((t) => merchantOf(t) === merchant)
+  const overall = funnelMetrics(mine)[key]
+  const trend = rollingTrend(mine, key, dates)
+
+  return {
+    key,
+    overall,
+    smallSample: overall.ratio.total < MIN_SAMPLE,
+    trend,
+    story: trendStory(trend),
+    banks: bankSummary(bankBreakdown(mine, key, bankOf)),
+  }
 }

@@ -8,6 +8,9 @@ merchants and the ops team how 3D Secure (3DS) is performing. I'm using it to le
 React, TypeScript, Tailwind, Radix, and shadcn/ui well enough to explain every
 decision, and to rehearse the real 2-hour case.
 
+Where it lives: the internal **admin** dashboard (used by ops), under
+General › Analytics › Fraud Analytics. Not the merchant-facing dashboard.
+
 ## The data
 Fetch with HTTP GET. No backend, auth, or routing.
 https://gist.githubusercontent.com/bmeeder22/ba2921a5791125fe33218da7e241628e/raw/c2d240421686ee1be38094b51ff1ea94ff3dc7e9/3ds_data.json
@@ -31,7 +34,7 @@ of the dataset in the app.
 
 ## Stack
 Vite 8, React 19, strict TypeScript, Tailwind v4 (`@tailwindcss/vite`), shadcn/ui
-(Radix base, `radix-maia` style), Recharts through shadcn Chart, TanStack Table v9,
+(Radix base, theme from `components.json`), Recharts through shadcn Chart, TanStack Table v9,
 Vitest, oxlint.
 
 - Single-page app: `index.html` → `src/main.tsx` → `src/App.tsx`. Global styles and
@@ -51,8 +54,9 @@ Vitest, oxlint.
 - One row per merchant (aggregated from that merchant's transactions), not one row
   per transaction.
 - Columns: merchant name, 3DS rate, then a "3DS outcomes" column group holding
-  challenge, rejection, frictionless, in that order.
-- 3DS rate shows a caption with the formula and the raw counts under the percentage.
+  frictionless, challenge, rejection, in that order (same order as the summary).
+- 3DS rate shows the raw counts with units under the percentage
+  ("1,014 3DS trnx / 1,333 total trnx"). No formula text. Other counts say "N trnx".
 - Hovering a challenge value shows a tooltip titled "Challenge outcomes" with
   success, failure, and abandonment rates, plus an arrow button that opens a side panel.
 - The side panel shows challenge outcomes per day and marks the biggest shift.
@@ -73,6 +77,30 @@ deterministically and label them as mock wherever they appear.
   numbers are red with an exclamation icon; warning numbers are amber with no icon;
   healthy numbers are plain. Screen readers still hear "Critical" / "Warning".
 
+## How ops uses the merchant detail (from an ops interview)
+- The table is the routine check; a click means "wait, what's that?" So the table must
+  visibly flag off merchants (health color on the row/cell) to prompt the click.
+- Questions the detail answers, in order:
+  1. Real or a small-sample blip? Show volume with the rate. Under 30 trnx: say
+     "too few to tell yet".
+  2. When did it start? One onset date (to line up with releases or bank changes).
+  3. Still going or recovered? Recovered = back within the healthy range for the
+     last 2 days.
+- Banks are mock data (the dataset has none): fictional names, made-up numbers,
+  labeled as mock.
+
+### Merchant detail MVP (second interview: ops replayed a real 2-minute incident)
+Ops checked count → when it started → bank split, then acted, and looked at nothing else.
+The detail opens inline under the row (never squeeze the table) and shows only:
+1. Bank line, first: "One bank: X at 58% · others around 20%", or "Spread across all
+   banks (16–21%)". This decides who ops contacts.
+2. Count line: rate, trnx volume, "started Feb 28, still going" / "recovered", or
+   "too few to tell yet".
+3. A small line (~64px) to tell a cliff from a slow climb.
+It shows the merchant's most urgent problem only (no rate picker).
+Cut until needed: full bank list, everyone-else comparison, related rates, a suggested
+next step, day-by-day numbers, raw transactions.
+
 ## Code rules
 - Metric calculations are pure functions in one file, with Vitest tests. No
   calculations inside components.
@@ -82,7 +110,7 @@ deterministically and label them as mock wherever they appear.
   values. Always pair color with a text label.
 - Use shadcn components before writing custom ones. Don't add a library without asking.
 - Add shadcn components only through the CLI, from the repo root:
-  `pnpm exec shadcn add <component>`. The theme (`radix-maia` style, `mist` base color)
+  `pnpm exec shadcn add <component>`. The theme (style and base color)
   comes from `components.json`, so never hand-write a component, paste code from the
   shadcn docs (they show the new-york style), pass `--style`, or edit `components.json`
   without asking. Use `--dry-run` or `--diff` to check before overwriting.
