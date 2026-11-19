@@ -122,6 +122,8 @@ I'm learning, so I work in two modes and will tell you which one we're in.
 - Learning mode: explain, review, and quiz me. Don't write the code for me.
 - Build mode: write code in small diffs and explain any non-obvious choice in one line.
 In both modes, tell me when something I ask for is a bad idea and why.
+Keep answers high level and concise, and simple enough for a beginner to understand and
+repeat back.
 If I haven't said which mode we're in, ask before writing feature code.
 
 ## How the work is judged

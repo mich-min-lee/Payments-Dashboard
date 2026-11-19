@@ -1,0 +1,231 @@
+/* The dashboard's theme: same tokens, fonts, and shadcn base styles. */
+@import "../../../src/index.css";
+@import "@fontsource-variable/outfit";
+@import "@fontsource-variable/jetbrains-mono";
+/* Only the italic: it's used for the hero's "internet speed." and nothing else. */
+@import "@fontsource/instrument-serif/latin-400-italic.css";
+
+/* Tailwind only scans this app by default; also scan the shared components for their classes. */
+@source "../../../src/components/ui";
+
+/* Landing-only fonts and accent. Body text uses Inter, which the dashboard's theme already loads. */
+@theme {
+  /* Roobert is a paid font (Displaay); it only renders where it's installed or self-hosted
+     with an @font-face. "Roobert TRIAL" is the local trial install (testing only, not for
+     anything shared). Everywhere else the stack falls back to Outfit. */
+  --font-display: "Roobert", "Roobert TRIAL", "Outfit Variable", sans-serif;
+  --font-body: "Inter Variable", sans-serif;
+  /* shadcn components title with font-heading (e.g. SheetTitle); point it at the primary font here.
+     The dashboard keeps Inter for headings. */
+  --font-heading: var(--font-display);
+  /* The hero's rotating audience word: a code font, so the line reads "built for developers". */
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-mint: oklch(0.88 0.12 170);
+  /* Primary blue: accent text (section headings' second line, eyebrows), the nav button, menu
+     titles. #0c56c6 is the hero shader's main blue (its first GrainGradient color), so the brand
+     color and the hero match. ~6.6:1 against white either way (white text on it, or it as text on
+     white), so it passes AA for body text and buttons. */
+  --color-brand-blue: #0c56c6;
+  /* Hover/pressed shade of brand blue: 25% toward black. */
+  --color-brand-blue-dark: color-mix(in oklab, var(--color-brand-blue) 75%, black);
+
+  /* Running text (story blurbs, the hero's proof band): 15px, one step up from text-sm (14px)
+     for easier reading. UI labels (nav, buttons, links, mockups) stay text-sm. */
+  --text-body: 0.9375rem;
+  --text-body--line-height: calc(1.375 / 0.9375);
+
+  /* Accent face: a true serif italic for "internet speed." in the hero. One weight (400). */
+  --font-accent: "Instrument Serif", Georgia, serif;
+}
+
+/*
+ * Grayscale font smoothing (Tailwind's `antialiased`), as Stripe and most product sites use. Without
+ * it, macOS thickens light text on dark fills, so white button labels rendered heavier than their
+ * weight. Landing page only; the dashboard keeps the browser default.
+ */
+@layer base {
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/*
+ * The page grid. Everything that should line up (nav, section content) uses this, so edges
+ * match at every breakpoint: 16px gutters on phones, 24px from sm, 32px from lg, capped at 80rem.
+ */
+@utility page-container {
+  margin-inline: auto;
+  width: 100%;
+  max-width: var(--container-7xl);
+  padding-inline: --spacing(4);
+  @variant sm {
+    padding-inline: --spacing(6);
+  }
+  @variant lg {
+    padding-inline: --spacing(8);
+  }
+}
+
+/*
+ * Vertical rhythm: the same white space above every section after the hero, and once more at the
+ * page end (on <main>). Sections set only top padding, so two sections' paddings never stack into
+ * a bigger gap. 96px on phones, 128px from md.
+ */
+:root {
+  --section-gap: calc(var(--spacing) * 24);
+}
+@media (width >= 48rem) {
+  :root {
+    --section-gap: calc(var(--spacing) * 32);
+  }
+}
+@utility section-gap {
+  padding-top: var(--section-gap);
+}
+
+/*
+ * Semi-transparent popover, matching the nav bar's glass. 88% opaque, not the bar's 70%: it holds
+ * small brand-blue menu titles, and over the hero's darkest navy (#00091f, the worst case) 75%
+ * left them at 3.7:1. At 88% the worst case is ~5.1:1, past AA's 4.5:1 for small text.
+ * Unlayered, so it beats the shadcn viewport's bg-popover utility without editing the shared
+ * component. 92% where blur isn't supported.
+ */
+[data-slot="navigation-menu-viewport"] {
+  background-color: color-mix(in oklab, var(--popover) 92%, transparent);
+}
+@supports (backdrop-filter: blur(1px)) {
+  [data-slot="navigation-menu-viewport"] {
+    background-color: color-mix(in oklab, var(--popover) 88%, transparent);
+    backdrop-filter: blur(24px) saturate(1.5);
+  }
+}
+
+/*
+ * Nav popover opens like a scroll unrolling: a clip reveals it from the top edge down, and rolls
+ * back up on close. The clip's rounded corners make the moving bottom edge read as the rolled
+ * paper. Overrides the shadcn viewport's zoom animation (unlayered beats its utilities), so the
+ * shared component stays untouched. No fill on open: once unrolled the clip is gone, so the
+ * card's shadow and ring aren't cut off. Reduced motion skips it (below).
+ */
+[data-slot="navigation-menu-viewport"][data-state="open"] {
+  animation: nav-unroll 380ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+[data-slot="navigation-menu-viewport"][data-state="closed"] {
+  animation: nav-roll-up 200ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+@keyframes nav-unroll {
+  from {
+    clip-path: inset(0 0 100% 0 round var(--radius-lg));
+  }
+  to {
+    clip-path: inset(0 0 0 0 round var(--radius-lg));
+  }
+}
+@keyframes nav-roll-up {
+  from {
+    clip-path: inset(0 0 0 0 round var(--radius-lg));
+  }
+  to {
+    clip-path: inset(0 0 100% 0 round var(--radius-lg));
+  }
+}
+
+/*
+ * Nav menu chevrons (the shared trigger's icon): dip 2px on hover or keyboard focus, a hint that
+ * the menu opens downward; flip on open with a slight springy overshoot. Uses the individual
+ * translate/rotate properties, which also override the shared icon's own rotate classes (those
+ * listen for a data-open attribute that this Radix menu doesn't set).
+ */
+[data-slot="navigation-menu-trigger"] > svg {
+  transition:
+    translate 250ms cubic-bezier(0.22, 1, 0.36, 1),
+    rotate 400ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+[data-slot="navigation-menu-trigger"]:is(:hover, :focus-visible) > svg {
+  translate: 0 2px;
+}
+[data-slot="navigation-menu-trigger"][data-state="open"] > svg {
+  translate: 0 0;
+  rotate: 180deg;
+}
+
+/*
+ * Moving between menus: a short, slow drift in the direction you moved. The old panel drifts 80px
+ * out while fading, the new one drifts 80px in while fading up. (Full-width travel left a big empty
+ * gap mid-switch.) At 80px the panels still overlap, so the crossfade keeps their text from colliding.
+ * Radix sets the direction (data-motion): moving right, the new panel comes from the right and the
+ * old one leaves to the left. The viewport resizes on the same duration and curve (Products has
+ * 4 columns, the rest 2), so resize and drift read as one motion. Ease-out with a long tail: it
+ * responds right away, then spends most of its time slowly settling.
+ */
+:root {
+  --nav-swipe-duration: 1000ms;
+  --nav-swipe-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --nav-swipe-distance: 80px;
+}
+[data-slot="navigation-menu-viewport"] {
+  transition:
+    width var(--nav-swipe-duration) var(--nav-swipe-ease),
+    height var(--nav-swipe-duration) var(--nav-swipe-ease);
+}
+[data-slot="navigation-menu-content"] {
+  --tw-animation-duration: var(--nav-swipe-duration);
+  --tw-ease: var(--nav-swipe-ease);
+  --tw-enter-opacity: 0;
+  --tw-exit-opacity: 0;
+}
+[data-slot="navigation-menu-content"][data-motion="from-end"] {
+  --tw-enter-translate-x: var(--nav-swipe-distance);
+}
+[data-slot="navigation-menu-content"][data-motion="from-start"] {
+  --tw-enter-translate-x: calc(-1 * var(--nav-swipe-distance));
+}
+[data-slot="navigation-menu-content"][data-motion="to-end"] {
+  --tw-exit-translate-x: var(--nav-swipe-distance);
+}
+[data-slot="navigation-menu-content"][data-motion="to-start"] {
+  --tw-exit-translate-x: calc(-1 * var(--nav-swipe-distance));
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="navigation-menu-viewport"],
+  [data-slot="navigation-menu-content"],
+  [data-slot="navigation-menu-trigger"] > svg {
+    animation: none;
+    transition: none;
+  }
+}
+
+/*
+ * Film grain for gradient surfaces (the "Who we serve" rows): an SVG noise tile, so it costs no
+ * WebGL context. feColorMatrix desaturates it to gray specks. Lay it over a gradient at low
+ * opacity with the normal blend; overlay/soft-light disappear on near-black backgrounds.
+ */
+@utility grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/*
+ * Accordion open/close: both rows share one duration and curve, so the row opening and the row
+ * closing read as one sliding motion. The curve starts fast (it moves on the first frame, so it
+ * feels responsive) and has a long, soft settle (so it still feels smooth, not snappy).
+ * It can't be set through the component's props, so it's set here; reduced motion skips it.
+ */
+[data-slot="accordion-content"] {
+  --tw-animation-duration: 600ms;
+  --tw-ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="accordion-content"] {
+    animation: none;
+  }
+}
+
+/*
+ * The hero's buttons. Its dark theme has an indigo primary; the reference uses a white one.
+ * Re-pointing the token keeps the button on its shadcn `default` variant instead of restyling it.
+ */
+.hero-surface {
+  --primary: oklch(0.985 0 0);
+  --primary-foreground: oklch(0.21 0.006 285.885);
+}
