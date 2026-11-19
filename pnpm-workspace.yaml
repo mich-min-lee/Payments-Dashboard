@@ -1,6 +1,7 @@
-# The dashboard stays at the repo root; extra apps live in apps/.
+# The dashboard stays at the repo root; extra apps live in apps/, shared code in packages/.
 packages:
   - "apps/*"
+  - "packages/*"
 
 allowBuilds:
   sharp: false

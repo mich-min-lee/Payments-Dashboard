@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite",
     "dev:landing": "pnpm --filter landing-redesign dev",
+    "dev:merchant": "pnpm --filter merchant-dashboard dev",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
