@@ -6,6 +6,7 @@
     "dev": "vite",
     "dev:landing": "pnpm --filter landing-redesign dev",
     "dev:merchant": "pnpm --filter merchant-dashboard dev",
+    "dev:ui": "pnpm --filter ui-playground dev",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
